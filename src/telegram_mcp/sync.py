@@ -20,7 +20,7 @@ from typing import Any
 import structlog
 from telethon.errors import FloodWaitError
 
-from telegram_mcp.archive import CoreArchive, Cursor
+from telegram_mcp.archive import Archive, Cursor
 from telegram_mcp.formatting import (
     describe_action,
     describe_media,
@@ -125,7 +125,7 @@ def message_record(message: Any, chat_id: int) -> dict[str, Any]:
 
 async def sync_account(
     client: Any,
-    archive: CoreArchive,
+    archive: Archive,
     policy: ChatPolicy,
     *,
     initial_limit: int,
@@ -188,7 +188,7 @@ async def sync_account(
 
 async def _sync_chat(
     client: Any,
-    archive: CoreArchive,
+    archive: Archive,
     account_id: int,
     dialog: Any,
     fetches: list[Fetch],

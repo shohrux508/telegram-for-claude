@@ -10,17 +10,17 @@ import sys
 from pydantic import ValidationError
 
 from telegram_mcp.accounts import AccountManager, TelegramMCPError, resolve_chat
-from telegram_mcp.archive import CoreArchive
 from telegram_mcp.config import Settings
 from telegram_mcp.formatting import format_entity
 from telegram_mcp.log import configure_logging
 from telegram_mcp.policy import ChatPolicy
+from telegram_mcp.server import make_archive
 from telegram_mcp.sync import sync_account
 
 
 def _load_settings() -> Settings:
     try:
-        return Settings()  # type: ignore[call-arg]  # filled from the environment
+        return Settings()
     except ValidationError as exc:
         missing = ", ".join(str(error["loc"][0]) for error in exc.errors())
         sys.exit(
@@ -74,11 +74,12 @@ async def _logout(manager: AccountManager, account: str) -> None:
 async def _sync(manager: AccountManager, settings: Settings, args: argparse.Namespace) -> None:
     if not settings.archive_enabled:
         sys.exit(
-            "The archive is not configured: set TELEGRAM_MCP_CORE_URL and "
-            "TELEGRAM_MCP_CORE_TOKEN in .env."
+            "The archive is turned off. Turn it on in the settings (telegram-mcp settings), "
+            "or set TELEGRAM_MCP_CORE_URL and TELEGRAM_MCP_CORE_TOKEN in .env."
         )
     policy = ChatPolicy(settings.hidden_chats)
-    archive = CoreArchive(settings.core_url, settings.core_token.get_secret_value())
+    archive = make_archive(settings)
+    assert archive is not None
     backfill = args.backfill
     try:
         while True:
@@ -128,7 +129,7 @@ def main() -> None:
     commands.add_parser("accounts", help="list logged-in accounts")
     logout = commands.add_parser("logout", help="revoke a session and delete it")
     logout.add_argument("--account", required=True)
-    sync = commands.add_parser("sync", help="upload new messages to the archive on core")
+    sync = commands.add_parser("sync", help="copy new messages into the history archive")
     sync.add_argument("--account", help="account to sync (default: the default account)")
     sync.add_argument("--chat", help="only this chat: id, @username or exact title")
     sync.add_argument(

@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from mcp.server.mcpserver import MCPServer
 
-from telegram_mcp import __version__
+from telegram_mcp import __version__, background
 from telegram_mcp.accounts import AccountManager
-from telegram_mcp.archive import CoreArchive
+from telegram_mcp.archive import Archive, CoreArchive
 from telegram_mcp.config import Settings
+from telegram_mcp.local_archive import LocalArchive
 from telegram_mcp.policy import ChatPolicy
 from telegram_mcp.tools import history, reading, writing
 
@@ -33,30 +36,47 @@ bans accounts for spam.
 """
 
 ARCHIVE_INSTRUCTIONS = """
-The history_* tools work with the history archive: a searchable copy of messages on the \
-user's own server. Use history_search to find old conversations across chats; it only \
-covers what history_status lists, and is only as fresh as the last history_sync. For \
+The history_* tools work with the history archive: a searchable copy of the user's \
+messages kept on their own computer or server. Use history_search to find old \
+conversations across chats; it only covers what history_status lists, and is only as \
+fresh as the last sync (it refreshes in the background while Claude is open). For \
 what is happening right now, read Telegram directly (get_unread, get_messages). \
 Opt a group or channel in (history_include_chat) only when the user names it.
 """
 
 
-def make_archive(settings: Settings) -> CoreArchive | None:
+def make_archive(settings: Settings) -> Archive | None:
     if not settings.archive_enabled:
         return None
-    return CoreArchive(settings.core_url, settings.core_token.get_secret_value())
+    if settings.archive_mode == "core":
+        return CoreArchive(settings.core_url, settings.core_token.get_secret_value())
+    return LocalArchive(settings.archive_db_path)
 
 
-def build_server(settings: Settings, archive: CoreArchive | None = None) -> MCPServer:
-    """Build the server. `archive` overrides the one made from settings (used by tests)."""
+def build_server(
+    settings: Settings, archive: Archive | None = None, *, background_sync: bool | None = None
+) -> MCPServer:
+    """Build the server. `archive` overrides the one made from settings (used by tests).
+
+    background_sync defaults to settings.auto_sync, and only applies with an archive.
+    """
     manager = AccountManager(settings)
     archive = archive or make_archive(settings)
+    policy = ChatPolicy(settings.hidden_chats)
+    run_sync = settings.auto_sync if background_sync is None else background_sync
 
     @asynccontextmanager
     async def lifespan(_: MCPServer) -> AsyncIterator[None]:
+        task = None
+        if archive is not None and run_sync:
+            task = asyncio.create_task(background.run_forever(manager, archive, settings, policy))
         try:
             yield
         finally:
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
             await manager.close()
             if archive is not None:
                 await archive.aclose()
@@ -68,7 +88,6 @@ def build_server(settings: Settings, archive: CoreArchive | None = None) -> MCPS
         lifespan=lifespan,
         log_level=settings.log_level,
     )
-    policy = ChatPolicy(settings.hidden_chats)
     reading.register(server, manager, settings, policy)
     if not settings.read_only:
         writing.register(server, manager, settings, policy)

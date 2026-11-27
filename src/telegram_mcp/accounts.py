@@ -88,6 +88,11 @@ class AccountManager:
 
     def build_client(self, account: str) -> Any:
         """Create a client without connecting it. Must be called inside a running loop."""
+        if not self._settings.api_configured:
+            raise TelegramMCPError(
+                "No Telegram API ID is configured. The user must open the Telegram for Claude "
+                "settings and fill in the API ID under 'Advanced'."
+            )
         path = self.session_path(account)
         path.parent.mkdir(parents=True, exist_ok=True)
         return TelegramClient(
@@ -97,7 +102,7 @@ class AccountManager:
             # The server only issues requests; skipping the update stream keeps it idle.
             receive_updates=False,
             flood_sleep_threshold=_FLOOD_SLEEP_THRESHOLD,
-            device_model="telegram-mcp",
+            device_model="Telegram for Claude",
             app_version=__version__,
         )
 
