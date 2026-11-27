@@ -1,6 +1,6 @@
 [project]
 name = "telegram-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local MCP server that gives Claude access to your Telegram accounts through a Telethon userbot"
 readme = "README.md"
 requires-python = ">=3.11"
