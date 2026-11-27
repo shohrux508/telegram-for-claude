@@ -58,6 +58,9 @@
   <h1>Telegram для Claude</h1>
   <p class="sub">Даёт Claude доступ к вашему Telegram на этом компьютере. Сессия и переписка
     никуда не отправляются — всё хранится здесь. Версия __VERSION__.</p>
+  <section id="update" class="hidden"><b>Вышла новая версия <span id="update-version"></span>.</b>
+    <a id="update-link" target="_blank" rel="noopener">Скачать установщик</a>, запустить его
+    и перезапустить Claude. Настройки и вход сохранятся.</section>
 
   <section id="s-account">
     <h2><span class="step">1</span>Аккаунт Telegram</h2>
@@ -360,6 +363,12 @@ $("btn-done").onclick = async () => {
 setInterval(() => api("/api/ping", {}).catch(() => {}), 10000);
 api("/api/ping", {}).catch(() => {});
 refresh();
+api("/api/update").then((u) => {
+  if (!u.version) return;
+  $("update-version").textContent = u.version;
+  $("update-link").href = u.url;
+  show("update", true);
+}).catch(() => {});
 </script>
 </body>
 </html>

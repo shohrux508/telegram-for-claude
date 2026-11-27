@@ -30,7 +30,7 @@ from telethon import utils
 
 from telegram_mcp import __version__
 from telegram_mcp.accounts import AccountManager, TelegramMCPError, validate_account_name
-from telegram_mcp.app import claude_config
+from telegram_mcp.app import claude_config, updates
 from telegram_mcp.app.login import QrLogin
 from telegram_mcp.config import EDITABLE_KEYS, Settings, read_settings_file, write_settings_file
 from telegram_mcp.formatting import display_name, entity_kind
@@ -147,6 +147,10 @@ class SettingsApp:
                 },
             }
         )
+
+    async def update(self, request: Request) -> Response:
+        found = await updates.check()
+        return JSONResponse({"version": found.version, "url": found.url} if found else {})
 
     async def ping(self, request: Request) -> Response:
         self.last_ping = time.monotonic()
@@ -334,6 +338,7 @@ def build_app(app: SettingsApp) -> Starlette:
         ("/", app.page, ["GET"]),
         ("/api/state", app.state, ["GET"]),
         ("/api/ping", app.ping, ["POST"]),
+        ("/api/update", app.update, ["GET"]),
         ("/api/login/start", app.login_start, ["POST"]),
         ("/api/login/status", app.login_status, ["GET"]),
         ("/api/login/qr", app.login_qr, ["GET"]),

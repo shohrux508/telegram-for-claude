@@ -1,0 +1,77 @@
+name: Release
+
+# Push a tag like v0.3.0 (matching __version__) to build the installer and
+# publish it as a GitHub release. The settings page of every installed copy
+# then offers the update.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Tag matches the program version
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path src\telegram_mcp\__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          if ("v$version" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} does not match __version__ $version" }
+
+      - name: Tests
+        run: |
+          uv sync --extra dev
+          uv run pytest -q
+
+      - name: Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      # The API ID for friends lives only in repository secrets. Without them the
+      # build still works, and users enter their own API ID on the settings page.
+      - name: build.env from secrets
+        shell: pwsh
+        env:
+          API_ID: ${{ secrets.TELEGRAM_BUILD_API_ID }}
+          API_HASH: ${{ secrets.TELEGRAM_BUILD_API_HASH }}
+        run: |
+          if ($env:API_ID -and $env:API_HASH) {
+            "TELEGRAM_BUILD_API_ID=$env:API_ID`nTELEGRAM_BUILD_API_HASH=$env:API_HASH`nTELEGRAM_BUILD_READ_ONLY_DEFAULT=true" | Set-Content -Encoding ascii build.env
+          } else {
+            Write-Warning "No TELEGRAM_BUILD_API_ID / TELEGRAM_BUILD_API_HASH secrets: building without a built-in API ID."
+          }
+
+      # A release published by hand (packaging/release.ps1 from the owner's
+      # machine) already has its installer: do not replace it with this build.
+      - name: Skip if the release exists
+        id: exists
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${{ github.ref_name }}" *> $null
+          if ($LASTEXITCODE -eq 0) { "skip=true" >> $env:GITHUB_OUTPUT; Write-Host "Release exists, nothing to do." } else { "skip=false" >> $env:GITHUB_OUTPUT }
+          exit 0
+
+      - name: Build installer
+        if: steps.exists.outputs.skip != 'true'
+        shell: pwsh
+        run: powershell -ExecutionPolicy Bypass -File packaging\build.ps1
+
+      - name: Remove build.env
+        if: always()
+        shell: pwsh
+        run: Remove-Item -Force build.env -ErrorAction SilentlyContinue
+
+      - name: Publish release
+        if: steps.exists.outputs.skip != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" (Get-Item dist\TelegramForClaude-Setup-*.exe).FullName --title "Telegram для Claude ${{ github.ref_name }}" --generate-notes

@@ -44,6 +44,26 @@ powershell -ExecutionPolicy Bypass -File packaging\build.ps1
 сборка тоже получится, но каждый будет вписывать свой API ID в «Дополнительно».
 Достать зашитый ID из exe можно, так что секретом он не считается.
 
+### Выпуск новой версии
+
+Репозиторий — <https://github.com/shohrux508/telegram-for-claude>. Страница настройки у
+каждого друга сама проверяет последний релиз и предлагает скачать новый установщик.
+
+1. Поднять `__version__` в [src/telegram_mcp/__init__.py](src/telegram_mcp/__init__.py)
+   и `version` в `pyproject.toml`, слить в `main`.
+2. Выпустить одним из двух способов:
+   - **с этого компьютера** — API ID берётся из `build.env`, а если его нет, из `.env`:
+     ```powershell
+     powershell -ExecutionPolicy Bypass -File packaging\release.ps1
+     ```
+   - **на GitHub** — запушить тег `v<версия>`. Workflow `release.yml` соберёт
+     установщик и создаст релиз. API ID он берёт из секретов репозитория
+     `TELEGRAM_BUILD_API_ID` и `TELEGRAM_BUILD_API_HASH`; без них соберёт программу
+     без встроенного ID.
+
+Релиз, уже выпущенный с компьютера, workflow не трогает. Тесты и линтеры гоняются
+на каждый push в `main` и на каждый PR (`ci.yml`).
+
 ## Установка из исходников
 
 Нужны [uv](https://docs.astral.sh/uv/) и Python 3.11+. Держите проект по короткому
