@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+
+# Secrets and Telegram auth keys: never commit
+.env
+*.session
+*.session-journal
