@@ -47,6 +47,14 @@ def embedded_api() -> tuple[int, str] | None:
     return (api_id, api_hash) if api_id and api_hash else None
 
 
+def _embedded_flag(name: str) -> bool:
+    try:
+        from telegram_mcp import _embedded  # type: ignore[attr-defined]
+    except ImportError:
+        return False
+    return bool(getattr(_embedded, name, False))
+
+
 class Settings(BaseSettings):
     """Everything the server needs to know before talking to Telegram."""
 
@@ -67,7 +75,8 @@ class Settings(BaseSettings):
 
     data_dir: Path = DEFAULT_DATA_DIR
     default_account: str = "main"
-    read_only: bool = False
+    # Release builds for friends start in read-only mode; see scripts/build.ps1.
+    read_only: bool = Field(default_factory=lambda: _embedded_flag("READ_ONLY_DEFAULT"))
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     # Chat ids (as printed by list_chats) that Claude must never see and that are

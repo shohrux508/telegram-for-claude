@@ -77,7 +77,7 @@ async def test_tool_errors_reach_the_model_with_their_message(settings: Settings
         accounts = await client.call_tool("list_accounts", {})
 
     assert result.is_error
-    assert "uv run telegram-mcp login --account main" in _text(result)
+    assert "telegram-mcp login --account main" in _text(result)
     assert not accounts.is_error
     assert "No accounts are logged in" in _text(accounts)
 

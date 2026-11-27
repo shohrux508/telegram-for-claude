@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telegram для Claude</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --accent: #2f6fde; --accent-text: #fff; --ok: #1f8a4c; --warn: #b54708; --err: #c0362c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --card: #1c2027; --text: #e8eaee; --muted: #9aa3b2; --line: #2c323c;
+      --accent: #5b8ff0; --accent-text: #0d1117; --ok: #4cc38a; --warn: #f0a35b; --err: #f07167;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+            padding: 18px 20px; margin-bottom: 16px; }
+  .step { display: inline-flex; width: 24px; height: 24px; border-radius: 50%;
+          background: var(--accent); color: var(--accent-text); font-size: 13px;
+          align-items: center; justify-content: center; margin-right: 8px; }
+  button { font: inherit; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--card); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type=text], input[type=password], input[type=number], select {
+    font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); width: 100%; max-width: 360px; }
+  label.choice { display: flex; gap: 10px; align-items: flex-start; margin: 8px 0; cursor: pointer; }
+  label.choice input { margin-top: 4px; }
+  .muted { color: var(--muted); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  #qr { width: 240px; height: 240px; background: #fff; border-radius: 8px; padding: 8px; }
+  ol { padding-left: 20px; margin: 8px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  td.c, th.c { text-align: center; width: 110px; }
+  .scroll { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+  details summary { cursor: pointer; font-weight: 600; }
+  .field { margin: 12px 0; }
+  .field span { display: block; color: var(--muted); font-size: 13px; margin-bottom: 4px; }
+  .note { font-size: 13px; color: var(--muted); }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Telegram для Claude</h1>
+  <p class="sub">Даёт Claude доступ к вашему Telegram на этом компьютере. Сессия и переписка
+    никуда не отправляются — всё хранится здесь. Версия __VERSION__.</p>
+
+  <section id="s-account">
+    <h2><span class="step">1</span>Аккаунт Telegram</h2>
+    <div id="no-api" class="hidden err">В этой сборке нет API ID. Заполните его в
+      «Дополнительно» внизу страницы.</div>
+    <div id="accounts"></div>
+    <div id="login-idle" class="row">
+      <button class="primary" id="btn-login">Войти по QR-коду</button>
+      <input type="text" id="login-name" placeholder="имя аккаунта, например work"
+             class="hidden" style="max-width:240px">
+    </div>
+    <div id="login-qr" class="hidden">
+      <ol>
+        <li>Откройте Telegram на телефоне.</li>
+        <li>Настройки → Устройства → <b>Подключить устройство</b>.</li>
+        <li>Наведите камеру на код.</li>
+      </ol>
+      <img id="qr" alt="QR-код для входа">
+      <div class="row"><span class="muted">Код обновляется сам.</span>
+        <button id="btn-login-cancel">Отмена</button></div>
+    </div>
+    <div id="login-password" class="hidden">
+      <p>У аккаунта включён облачный пароль. Введите его — он уйдёт напрямую в Telegram.</p>
+      <div class="row">
+        <input type="password" id="password" autocomplete="current-password" placeholder="облачный пароль">
+        <button class="primary" id="btn-password">Войти</button>
+      </div>
+    </div>
+    <p id="login-error" class="err"></p>
+  </section>
+
+  <section id="s-claude">
+    <h2><span class="step">2</span>Подключить к Claude</h2>
+    <p>Пропишет программу в Claude Desktop и, если он установлен, в Claude Code.</p>
+    <div id="claude-status" class="muted"></div>
+    <div class="row"><button class="primary" id="btn-connect">Подключить</button></div>
+    <p id="connect-result"></p>
+  </section>
+
+  <section id="s-perms">
+    <h2><span class="step">3</span>Что разрешить Claude</h2>
+    <label class="choice"><input type="radio" name="mode" value="ro">
+      <span><b>Только читать</b> (рекомендуется). Claude видит и ищет переписку, но ничего не
+        отправляет, не удаляет и не меняет.</span></label>
+    <label class="choice"><input type="radio" name="mode" value="rw">
+      <span><b>Читать и действовать от моего имени</b>: отправка, правка, удаление, пересылка.
+        Claude спрашивает перед отправкой, но чужое сообщение может попытаться его обмануть —
+        не разрешайте Claude выполнять действия без подтверждения.</span></label>
+    <p id="perms-note" class="note"></p>
+  </section>
+
+  <section id="s-archive">
+    <h2><span class="step">4</span>Поиск по старой переписке</h2>
+    <label class="choice"><input type="checkbox" id="archive-on">
+      <span>Хранить копию переписки на этом компьютере, чтобы Claude быстро искал по всей
+        истории. Обновляется сама, пока открыт Claude.</span></label>
+    <p id="archive-status" class="muted"></p>
+    <div class="row"><button id="btn-sync">Обновить сейчас</button></div>
+    <p class="note">Личные чаты сохраняются всегда, группы и каналы — только отмеченные ниже.</p>
+  </section>
+
+  <section id="s-chats">
+    <h2><span class="step">5</span>Чаты</h2>
+    <p>Скрытые чаты Claude не увидит вообще. Чат Telegram с кодами входа скрыт всегда.</p>
+    <div class="row"><button id="btn-chats">Показать мои чаты</button>
+      <select id="chats-account" class="hidden" style="max-width:200px"></select></div>
+    <div id="chats-box" class="hidden">
+      <div class="row"><input type="text" id="chats-filter" placeholder="Найти чат"></div>
+      <div class="scroll" style="margin-top:10px">
+        <table><thead><tr><th>Чат</th><th class="c">Скрыть от Claude</th>
+          <th class="c">Сохранять в архив</th></tr></thead><tbody id="chats-body"></tbody></table>
+      </div>
+      <div class="row"><button class="primary" id="btn-chats-save">Сохранить</button>
+        <span id="chats-result" class="muted"></span></div>
+    </div>
+  </section>
+
+  <section>
+    <details>
+      <summary>Дополнительно</summary>
+      <div class="field"><span>Свой API ID (с my.telegram.org). Пусто — встроенный.</span>
+        <input type="number" id="api-id"></div>
+      <div class="field"><span>Свой API hash. Пусто — не менять.</span>
+        <input type="password" id="api-hash" autocomplete="off"></div>
+      <div class="field"><span>Где хранить архив</span>
+        <select id="archive-mode"><option value="local">на этом компьютере</option>
+          <option value="core">на своём сервере (core)</option>
+          <option value="off">не хранить</option></select></div>
+      <div id="core-fields" class="hidden">
+        <div class="field"><span>Адрес сервера</span><input type="text" id="core-url"
+          placeholder="https://example.com"></div>
+        <div class="field"><span>Токен сервера. Пусто — не менять.</span>
+          <input type="password" id="core-token" autocomplete="off"></div>
+      </div>
+      <div class="field"><span>Обновлять архив каждые, минут</span>
+        <input type="number" id="interval" min="1" max="1440"></div>
+      <div class="row"><button class="primary" id="btn-advanced">Сохранить</button>
+        <span id="advanced-result" class="muted"></span></div>
+      <p id="overridden" class="note"></p>
+    </details>
+  </section>
+
+  <section>
+    <h2>Важно знать</h2>
+    <ul>
+      <li>Claude получает доступ к вашему аккаунту так же, как ещё одно устройство. Отключить —
+        «Выйти» выше или в Telegram: Настройки → Устройства.</li>
+      <li>Чужие сообщения могут содержать «команды» для Claude. Он обучен их не выполнять, но
+        для надёжности держите «Только читать».</li>
+      <li>Telegram может заблокировать аккаунт за рассылки через такие программы. Не просите
+        Claude писать незнакомым людям.</li>
+    </ul>
+    <div class="row"><button class="primary" id="btn-done">Готово</button>
+      <span id="done-note" class="muted"></span></div>
+  </section>
+</main>
+<script>
+const T = "__TOKEN__";
+const $ = (id) => document.getElementById(id);
+let state = null, qrUrl = "", polling = null, chats = [];
+
+async function api(path, body) {
+  const opts = { headers: { "X-Token": T } };
+  if (body !== undefined) {
+    opts.method = "POST";
+    opts.headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ("Ошибка " + res.status));
+  return data;
+}
+function show(id, on) { $(id).classList.toggle("hidden", !on); }
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+async function refresh() {
+  try { state = await api("/api/state"); } catch (e) { $("login-error").textContent = e.message; return; }
+  const s = state.settings;
+  show("no-api", !state.api_configured);
+  $("btn-login").disabled = !state.api_configured;
+
+  const acc = state.accounts;
+  $("accounts").innerHTML = acc.map((a) => a.ok
+    ? `<div class="row"><span class="ok">✓</span> <b>${esc(a.who)}</b>
+         <span class="muted">(${esc(a.name)})</span>
+         <button data-logout="${esc(a.name)}">Выйти</button></div>`
+    : `<div class="row"><span class="err">✗ ${esc(a.name)}: ${esc(a.error)}</span>
+         <button data-logout="${esc(a.name)}">Убрать</button></div>`).join("");
+  $("btn-login").textContent = acc.length ? "Добавить ещё аккаунт" : "Войти по QR-коду";
+  show("login-name", acc.length > 0);
+  renderLogin(state.login);
+
+  const desk = state.claude.desktop.filter((d) => d.exists);
+  const deskOk = desk.some((d) => d.registered);
+  const code = state.claude.code;
+  $("claude-status").innerHTML =
+    `Claude Desktop: ${deskOk ? '<span class="ok">подключено</span>' : (desk.length ? "не подключено" : "не найден — будет создан файл настроек")}<br>` +
+    `Claude Code: ${code === null ? "не установлен" : (code ? '<span class="ok">подключено</span>' : "не подключено")}`;
+
+  document.querySelector(`input[name=mode][value=${s.read_only ? "ro" : "rw"}]`).checked = true;
+  const fixed = state.overridden;
+  $("perms-note").textContent = fixed.includes("read_only") ? "Задано в .env — здесь не меняется." : "";
+
+  $("archive-on").checked = s.archive_mode !== "off";
+  const a = state.archive;
+  $("archive-status").textContent = !a.enabled ? "Архив выключен."
+    : a.error ? "Архив недоступен: " + a.error
+    : a.messages !== undefined ? `Сохранено ${a.messages} сообщений в ${a.chats} чатах.` : "";
+  $("btn-sync").disabled = !a.enabled || !acc.some((x) => x.ok);
+
+  $("api-id").value = s.api_id || "";
+  $("archive-mode").value = s.archive_mode;
+  $("core-url").value = s.core_url;
+  $("interval").value = s.sync_interval_minutes;
+  show("core-fields", s.archive_mode === "core");
+  $("overridden").textContent = fixed.length ? "Заданы в .env и здесь не меняются: " + fixed.join(", ") : "";
+
+  const sel = $("chats-account");
+  sel.innerHTML = acc.filter((x) => x.ok).map((x) => `<option>${esc(x.name)}</option>`).join("");
+  show("chats-account", acc.filter((x) => x.ok).length > 1);
+  $("btn-chats").disabled = !acc.some((x) => x.ok);
+}
+
+async function renderLogin(l) {
+  $("login-error").textContent = l.error || "";
+  show("login-qr", l.status === "waiting");
+  show("login-password", l.status === "password");
+  show("login-idle", l.status !== "waiting" && l.status !== "password");
+  if (l.status === "waiting" && l.qr_url && l.qr_url !== qrUrl) {
+    qrUrl = l.qr_url;
+    const res = await fetch("/api/login/qr", { headers: { "X-Token": T } });
+    if (res.ok) $("qr").src = URL.createObjectURL(await res.blob());
+  }
+  const active = l.status === "waiting" || l.status === "password";
+  if (active && !polling) polling = setInterval(pollLogin, 2000);
+  if (!active && polling) { clearInterval(polling); polling = null; }
+}
+async function pollLogin() {
+  const l = await api("/api/login/status");
+  if (l.status === "done") { clearInterval(polling); polling = null; qrUrl = ""; await refresh(); return; }
+  renderLogin(l);
+}
+
+$("btn-login").onclick = async () => {
+  $("login-error").textContent = "";
+  const name = state.accounts.length ? $("login-name").value.trim() : "";
+  if (state.accounts.length && !name) { $("login-error").textContent = "Введите имя для второго аккаунта."; return; }
+  try { const l = await api("/api/login/start", { account: name || undefined });
+        if (l.status === "done") await refresh(); else renderLogin(l); }
+  catch (e) { $("login-error").textContent = e.message; }
+};
+$("btn-login-cancel").onclick = async () => renderLogin(await api("/api/login/cancel", {}));
+$("btn-password").onclick = async () => {
+  const l = await api("/api/login/password", { password: $("password").value });
+  $("password").value = "";
+  if (l.status === "done") await refresh(); else renderLogin(l);
+};
+$("accounts").onclick = async (ev) => {
+  const name = ev.target.dataset.logout;
+  if (!name || !confirm(`Выйти из аккаунта ${name}? Claude потеряет к нему доступ.`)) return;
+  try { await api("/api/logout", { account: name }); } catch (e) { alert(e.message); }
+  refresh();
+};
+
+$("btn-connect").onclick = async () => {
+  $("btn-connect").disabled = true;
+  try {
+    const r = await api("/api/claude/connect", {});
+    let msg = "Готово. Теперь <b>полностью перезапустите Claude</b>: значок у часов → Выход, затем откройте снова.";
+    if (r.code_error) msg += `<br><span class="warn">Claude Code: ${esc(r.code_error)}</span>`;
+    $("connect-result").innerHTML = msg;
+  } catch (e) { $("connect-result").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  $("btn-connect").disabled = false;
+  refresh();
+};
+
+async function save(changes, out) {
+  try { await api("/api/settings", changes); if (out) $(out).textContent = "Сохранено. Перезапустите Claude, чтобы он увидел изменения."; }
+  catch (e) { if (out) $(out).textContent = e.message; else alert(e.message); }
+  refresh();
+}
+document.querySelectorAll("input[name=mode]").forEach((r) => r.onchange = () =>
+  save({ read_only: r.value === "ro" }, "perms-note"));
+$("archive-on").onchange = () => save({ archive_mode: $("archive-on").checked ? "local" : "off" });
+$("archive-mode").onchange = () => show("core-fields", $("archive-mode").value === "core");
+$("btn-advanced").onclick = () => {
+  const c = { archive_mode: $("archive-mode").value, core_url: $("core-url").value.trim(),
+              core_token: $("core-token").value, sync_interval_minutes: Number($("interval").value) || 10,
+              api_hash: $("api-hash").value };
+  const id = $("api-id").value.trim();
+  c.api_id = id ? Number(id) : 0;
+  if (!id) c.api_hash = "";
+  $("api-hash").value = ""; $("core-token").value = "";
+  save(c, "advanced-result");
+};
+$("btn-sync").onclick = async () => {
+  $("btn-sync").disabled = true; $("archive-status").textContent = "Обновляю… это может занять пару минут.";
+  try { const r = await api("/api/sync", {}); $("archive-status").textContent = r.summary; }
+  catch (e) { $("archive-status").textContent = e.message; }
+  setTimeout(refresh, 1500);
+};
+
+const KIND = { user: "личный", bot: "бот", group: "группа", supergroup: "группа", forum: "форум", channel: "канал" };
+function renderChats() {
+  const q = $("chats-filter").value.toLowerCase();
+  $("chats-body").innerHTML = chats.filter((c) => c.title.toLowerCase().includes(q)).map((c) =>
+    `<tr><td>${esc(c.title)} <span class="muted">· ${KIND[c.kind] || c.kind}</span></td>
+      <td class="c"><input type="checkbox" data-id="${c.id}" data-f="hidden" ${c.hidden ? "checked" : ""}></td>
+      <td class="c"><input type="checkbox" data-id="${c.id}" data-f="archived" ${c.archived && !c.hidden ? "checked" : ""}
+        ${c.always_archived || c.hidden ? "disabled" : ""} title="${c.always_archived ? "Личные чаты сохраняются всегда" : ""}"></td></tr>`).join("");
+}
+$("btn-chats").onclick = async () => {
+  $("btn-chats").disabled = true; $("chats-result").textContent = "";
+  try { chats = (await api("/api/chats?account=" + encodeURIComponent($("chats-account").value || ""))).chats;
+        show("chats-box", true); renderChats(); }
+  catch (e) { alert(e.message); }
+  $("btn-chats").disabled = false;
+};
+$("chats-filter").oninput = renderChats;
+$("chats-body").onchange = (ev) => {
+  const c = chats.find((x) => String(x.id) === ev.target.dataset.id);
+  if (c) { c[ev.target.dataset.f] = ev.target.checked; renderChats(); }
+};
+$("btn-chats-save").onclick = async () => {
+  try {
+    await api("/api/chats", { account: $("chats-account").value || undefined,
+      hidden: chats.filter((c) => c.hidden).map((c) => c.id),
+      archive: chats.filter((c) => c.archived && !c.always_archived && !c.hidden).map((c) => c.id) });
+    $("chats-result").textContent = "Сохранено. Перезапустите Claude, чтобы скрытие вступило в силу.";
+  } catch (e) { $("chats-result").textContent = e.message; }
+};
+
+$("btn-done").onclick = async () => {
+  await api("/api/quit", {}).catch(() => {});
+  $("done-note").textContent = "Программа настройки закрыта, вкладку можно закрыть. Claude продолжит работать.";
+  document.querySelectorAll("button").forEach((b) => b.disabled = true);
+};
+
+setInterval(() => api("/api/ping", {}).catch(() => {}), 10000);
+api("/api/ping", {}).catch(() => {});
+refresh();
+</script>
+</body>
+</html>

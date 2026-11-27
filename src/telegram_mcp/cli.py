@@ -122,6 +122,7 @@ def main() -> None:
     )
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("serve", help="run the MCP server over stdio (default)")
+    commands.add_parser("settings", help="open the settings page in the browser")
     login = commands.add_parser("login", help="log an account in interactively")
     login.add_argument(
         "--account", help="name for this account (default: TELEGRAM_MCP_DEFAULT_ACCOUNT)"
@@ -151,7 +152,17 @@ def main() -> None:
         # Chat names contain emoji; a legacy Windows console must not crash on them.
         sys.stdout.reconfigure(errors="replace")
 
-    if args.command in (None, "serve"):
+    command = args.command
+    if command is None:
+        # The installed program is started by double-click: show the settings.
+        # Claude always passes "serve" explicitly (see app/claude_config.py).
+        command = "settings" if getattr(sys, "frozen", False) else "serve"
+    if command == "settings":
+        from telegram_mcp.app.main import run_settings
+
+        run_settings()
+        return
+    if command == "serve":
         # Imported here so `login` does not pay for loading the MCP SDK.
         from telegram_mcp.server import build_server
 
