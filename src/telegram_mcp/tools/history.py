@@ -1,7 +1,7 @@
-"""Tools for the history archive kept on the core server.
+"""Tools for the history archive: kept on this computer or on the core server.
 
 Registered only when the archive is configured. "History archive" here is the
-searchable server-side copy of messages; it is unrelated to Telegram's Archive
+searchable copy of messages (see archive.Archive); it is unrelated to Telegram's Archive
 folder, which the `archive_chat` tool manages.
 """
 
@@ -14,7 +14,7 @@ from mcp.server.mcpserver import MCPServer
 from telethon import utils
 
 from telegram_mcp.accounts import AccountManager, TelegramMCPError, resolve_chat
-from telegram_mcp.archive import CoreArchive
+from telegram_mcp.archive import Archive
 from telegram_mcp.config import Settings
 from telegram_mcp.formatting import (
     display_name,
@@ -55,7 +55,7 @@ def register(
     manager: AccountManager,
     settings: Settings,
     policy: ChatPolicy,
-    archive: CoreArchive,
+    archive: Archive,
 ) -> None:
     async def account_id_of(client: Any) -> int:
         return int((await client.get_me()).id)
@@ -137,7 +137,7 @@ def register(
         chat: str | int | None = None,
         account: str | None = None,
     ) -> str:
-        """Upload new messages from Telegram to the history archive on the owner's server.
+        """Copy new messages from Telegram into the history archive (on this computer or server).
 
         Covers personal chats and opted-in chats. Runs for at most `max_seconds`; if it
         reports "Not finished", call it again. Nothing changes in Telegram itself.
@@ -163,7 +163,7 @@ def register(
     async def history_include_chat(chat: str | int, account: str | None = None) -> str:
         """Opt a group, channel or bot chat into the history archive.
 
-        From the next history_sync on, its messages are copied to the owner's server.
+        From the next sync on, its messages are copied into the archive.
         Do this only for chats the user named. Personal chats need no opt-in.
         """
         client = await manager.get(account)
@@ -185,7 +185,7 @@ def register(
     async def history_exclude_chat(
         chat: str | int, purge: bool = False, account: str | None = None
     ) -> str:
-        """Stop archiving an opted-in chat; with `purge`, also delete its copy from the server.
+        """Stop archiving an opted-in chat; with `purge`, also delete its archived copy.
 
         Purging cannot be undone except by archiving the chat again. Telegram itself is
         not touched.

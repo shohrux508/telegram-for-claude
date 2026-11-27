@@ -7,7 +7,7 @@ server's job. The JSON shapes are defined by core's `modules/tg_archive/models.p
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 import httpx2
 
@@ -33,6 +33,40 @@ class Cursor:
 class SyncState:
     cursors: dict[int, Cursor]
     selected: frozenset[int]
+
+
+class Archive(Protocol):
+    """Where history lives: on the core server (CoreArchive) or on this computer
+    (local_archive.LocalArchive). Both take and return the same plain shapes."""
+
+    async def aclose(self) -> None: ...
+    async def sync_state(self, account_id: int) -> SyncState: ...
+    async def ingest(
+        self, account_id: int, chats: list[dict[str, Any]], messages: list[dict[str, Any]]
+    ) -> tuple[int, int]: ...
+    async def set_selection(
+        self,
+        account_id: int,
+        chat_id: int,
+        *,
+        selected: bool,
+        title: str = "",
+        kind: str = "",
+        purge: bool = False,
+    ) -> int: ...
+    async def search(
+        self,
+        *,
+        q: str = "",
+        account_id: int | None = None,
+        chat_id: int | None = None,
+        sender_id: int | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: int = 20,
+        sort: str = "relevance",
+    ) -> list[dict[str, Any]]: ...
+    async def chats(self, account_id: int) -> list[dict[str, Any]]: ...
 
 
 class CoreArchive:
@@ -120,7 +154,28 @@ class CoreArchive:
         )
         return int(data["purged_messages"])
 
-    async def search(self, **params: Any) -> list[dict[str, Any]]:
+    async def search(
+        self,
+        *,
+        q: str = "",
+        account_id: int | None = None,
+        chat_id: int | None = None,
+        sender_id: int | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        limit: int = 20,
+        sort: str = "relevance",
+    ) -> list[dict[str, Any]]:
+        params = {
+            "q": q,
+            "account_id": account_id,
+            "chat_id": chat_id,
+            "sender_id": sender_id,
+            "since": since,
+            "until": until,
+            "limit": limit,
+            "sort": sort,
+        }
         present = {key: value for key, value in params.items() if value is not None}
         data = await self._request("GET", "/search", params=present)
         hits: list[dict[str, Any]] = data["hits"]

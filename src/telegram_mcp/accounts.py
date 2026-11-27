@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
 from telethon import TelegramClient
+from telethon.sessions import SQLiteSession
 
 from telegram_mcp import __version__
 from telegram_mcp.config import Settings
@@ -25,6 +28,36 @@ _NUMERIC_ID = re.compile(r"-?\d+")
 # Above this Telethon raises FloodWaitError instead of silently sleeping, so a
 # tool call never hangs for minutes without the model knowing why.
 _FLOOD_SLEEP_THRESHOLD = 10
+# How long a process waits for another one to finish writing the session file.
+_SESSION_BUSY_TIMEOUT_S = 30.0
+
+
+class SharedSQLiteSession(SQLiteSession):  # type: ignore[misc]  # Telethon has no types
+    """Telethon's session file, made safe to share between processes.
+
+    Claude runs one server per window and the settings page is one more process,
+    all on the same session file. Stock Telethon writes every entity it sees but
+    commits only on disconnect, so the first process holds the write lock for its
+    whole life and every other one fails with "database is locked". Here each
+    write commits at once, the journal is WAL (readers never block), and a busy
+    file is waited for instead of failing.
+    """
+
+    _conn: sqlite3.Connection | None
+
+    def _cursor(self) -> Any:
+        if self._conn is None:
+            conn = sqlite3.connect(
+                self.filename, check_same_thread=False, timeout=_SESSION_BUSY_TIMEOUT_S
+            )
+            with contextlib.suppress(sqlite3.Error):
+                conn.execute("PRAGMA journal_mode=WAL")
+            self._conn = conn
+        return self._conn.cursor()
+
+    def process_entities(self, tlo: Any) -> None:
+        super().process_entities(tlo)
+        self.save()
 
 
 class TelegramMCPError(Exception):
@@ -88,16 +121,21 @@ class AccountManager:
 
     def build_client(self, account: str) -> Any:
         """Create a client without connecting it. Must be called inside a running loop."""
+        if not self._settings.api_configured:
+            raise TelegramMCPError(
+                "No Telegram API ID is configured. The user must open the Telegram for Claude "
+                "settings and fill in the API ID under 'Advanced'."
+            )
         path = self.session_path(account)
         path.parent.mkdir(parents=True, exist_ok=True)
         return TelegramClient(
-            str(path),
+            SharedSQLiteSession(str(path)),
             self._settings.api_id,
             self._settings.api_hash.get_secret_value(),
             # The server only issues requests; skipping the update stream keeps it idle.
             receive_updates=False,
             flood_sleep_threshold=_FLOOD_SLEEP_THRESHOLD,
-            device_model="telegram-mcp",
+            device_model="Telegram for Claude",
             app_version=__version__,
         )
 
@@ -136,8 +174,8 @@ class AccountManager:
 
 def _login_hint(account: str, problem: str) -> str:
     return (
-        f"Telegram account {account!r} {problem}. The user must run "
-        f"`uv run telegram-mcp login --account {account}` in a terminal in the project folder."
+        f"Telegram account {account!r} {problem}. The user must log in again: open the "
+        f"Telegram for Claude settings, or run `telegram-mcp login --account {account}`."
     )
 
 

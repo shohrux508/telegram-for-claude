@@ -10,3 +10,9 @@ dist/
 .env
 *.session
 *.session-journal
+
+# Release builds: the baked-in API ID never goes into git
+build/
+build.env
+src/telegram_mcp/_embedded.py
+*.spec
