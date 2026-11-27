@@ -14,9 +14,10 @@ $version = (Select-String -Path "src\telegram_mcp\__init__.py" -Pattern '__versi
 $tag = "v$version"
 if ((git branch --show-current) -ne "main") { throw "Release from main only." }
 if (git status --porcelain --untracked-files=no) { throw "Commit or stash your changes first." }
-git fetch origin main --quiet
+cmd /c "git fetch origin main --quiet 2>&1"
 if ((git rev-parse HEAD) -ne (git rev-parse origin/main)) { throw "Local main differs from origin/main: pull or push first." }
-gh release view $tag *> $null
+# Through cmd: in Windows PowerShell a redirected native stderr line becomes a terminating error.
+cmd /c "gh release view $tag >nul 2>&1"
 if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists: bump __version__ first." }
 
 $madeBuildEnv = $false
