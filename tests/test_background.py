@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from fakes import AZIZ, FakeManager, FakeTelegram
@@ -31,9 +32,15 @@ def test_lock_is_exclusive_across_processes(tmp_path: Path) -> None:
     finally:
         holder.kill()
         holder.wait()
-    # The OS released it when the holder died: nothing can get stuck.
-    with background.exclusive_lock(lock) as acquired:
-        assert acquired
+    # The OS releases it when the holder dies, so nothing can get stuck. Windows
+    # does that asynchronously after the process ends, hence the short wait.
+    deadline = time.monotonic() + 10
+    while True:
+        with background.exclusive_lock(lock) as acquired:
+            if acquired or time.monotonic() > deadline:
+                break
+        time.sleep(0.2)
+    assert acquired
 
 
 class Accounts(FakeManager):
