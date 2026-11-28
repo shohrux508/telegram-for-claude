@@ -39,6 +39,27 @@ try {
 }
 
 $setup = "dist\TelegramForClaude-Setup-$version.exe"
-gh release create $tag $setup --target main --title "Telegram для Claude $tag" --generate-notes
-if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+
+# Three steps, each retried: a 24 MB upload over a flaky connection times out
+# now and then, and a draft can be finished later without starting over.
+function Retry([string]$what, [scriptblock]$step) {
+    foreach ($try in 1..4) {
+        & $step
+        if ($LASTEXITCODE -eq 0) { return }
+        Write-Warning "$what failed (try $try of 4)"
+        Start-Sleep -Seconds 15
+    }
+    throw "$what failed. Finish by hand: gh release upload / gh release edit $tag --draft=false"
+}
+cmd /c "gh release view $tag >nul 2>&1"
+if ($LASTEXITCODE -ne 0) {
+    Retry "Creating the draft" { cmd /c "gh release create $tag --draft --target main --title ""Telegram для Claude $tag"" --generate-notes 2>&1" }
+}
+Retry "Uploading the installer" { cmd /c "gh release upload $tag $setup --clobber 2>&1" }
+# The response to publishing can be lost even when publishing worked: check before retrying.
+Retry "Publishing" {
+    cmd /c "gh release edit $tag --draft=false >nul 2>&1"
+    $draft = cmd /c "gh release view $tag --json isDraft --jq .isDraft 2>nul"
+    $global:LASTEXITCODE = if ($draft -eq "false") { 0 } else { 1 }
+}
 Write-Host "Published $tag"
